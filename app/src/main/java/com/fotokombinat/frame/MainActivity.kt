@@ -70,6 +70,7 @@ private fun FrameApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var imageUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var palette by remember { mutableStateOf<List<Int>>(emptyList()) }
     var selected by remember { mutableIntStateOf(AndroidColor.rgb(235, 231, 222)) }
     var hex by remember { mutableStateOf("#EBE7DE") }
@@ -88,9 +89,8 @@ private fun FrameApp() {
         if (uri != null) scope.launch {
             busy = true
             try {
-                val loaded = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-                }
+                val loaded = withContext(Dispatchers.IO) { decodeBitmap(context, uri, 2048L * 2048L) }
+                imageUri = uri
                 bitmap = loaded
                 palette = loaded?.let { withContext(Dispatchers.Default) { dominantColors(it, 10) } } ?: emptyList()
                 message = if (loaded == null) "Could not open this image." else ""
@@ -123,6 +123,7 @@ private fun FrameApp() {
                     actions = {
                         IconButton(onClick = {
                             bitmap = null
+                            imageUri = null
                             palette = emptyList()
                             message = ""
                         }) { Icon(Icons.Default.Refresh, "Reset") }
@@ -268,24 +269,30 @@ private fun FrameApp() {
                     }
                     Button(
                         onClick = {
-                            val src = bitmap
-                            if (src != null) scope.launch {
+                            val source = imageUri
+                            if (source != null) scope.launch {
                                 busy = true
+                                var exportSource: Bitmap? = null
+                                var out: Bitmap? = null
                                 try {
-                                    val out = withContext(Dispatchers.Default) {
-                                        render(src, selected, style, topPct, bottomPct, leftPct, rightPct)
+                                    exportSource = withContext(Dispatchers.IO) {
+                                        decodeBitmap(context, source, 16_000_000L)
+                                    } ?: throw IllegalStateException("Image could not be decoded")
+                                    out = withContext(Dispatchers.Default) {
+                                        render(exportSource!!, selected, style, topPct, bottomPct, leftPct, rightPct)
                                     }
-                                    val saved = withContext(Dispatchers.IO) { saveBitmap(context, out) }
+                                    val saved = withContext(Dispatchers.IO) { saveBitmap(context, out!!) }
                                     message = if (saved) "Saved to Pictures/FRAME" else "Could not save image."
-                                    out.recycle()
                                 } catch (e: Exception) {
-                                    message = "Export failed. Try a smaller image."
+                                    message = "Export failed. The image may exceed this device's memory limit."
                                 } finally {
+                                    out?.recycle()
+                                    exportSource?.recycle()
                                     busy = false
                                 }
                             }
                         },
-                        enabled = bitmap != null && !busy,
+                        enabled = imageUri != null && !busy,
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.Download, null)
@@ -391,6 +398,27 @@ private fun SideSlider(name: String, v: Float, on: (Float) -> Unit) {
         Slider(value = v, onValueChange = on, valueRange = 0f..40f, modifier = Modifier.weight(1f))
         Text("${v.toInt()}%", modifier = Modifier.width(38.dp), style = MaterialTheme.typography.labelSmall)
     }
+}
+
+private fun decodeBitmap(
+    context: android.content.Context,
+    uri: android.net.Uri,
+    maxPixels: Long
+): Bitmap? {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    var sample = 1
+    while ((bounds.outWidth.toLong() / sample) * (bounds.outHeight.toLong() / sample) > maxPixels) {
+        sample *= 2
+    }
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = sample
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
+    return resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
 }
 
 private fun parseHex(s: String): Int? = try {
