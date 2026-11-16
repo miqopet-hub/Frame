@@ -149,7 +149,7 @@ private fun FrameApp() {
                 }
 
                 Box(
-                    Modifier.fillMaxWidth().heightIn(min = 250.dp, max = 390.dp)
+                    Modifier.fillMaxWidth().height(320.dp)
                         .clip(RoundedCornerShape(18.dp)).background(Color(0xFFE9E7E1)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -167,7 +167,7 @@ private fun FrameApp() {
                     } else {
                         var previewSize by remember { mutableStateOf(IntSize.Zero) }
                         ComposeCanvas(
-                            Modifier.fillMaxWidth().heightIn(min = 250.dp, max = 390.dp)
+                            Modifier.fillMaxSize()
                                 .onSizeChanged { previewSize = it }
                                 .pointerInput(image, sampling, previewSize, topPct, bottomPct, leftPct, rightPct, style) {
                                     detectTapGestures { p ->
