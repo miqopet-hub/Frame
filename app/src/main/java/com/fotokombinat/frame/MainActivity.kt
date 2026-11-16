@@ -460,7 +460,7 @@ private fun render(
     if (style == BorderStyle.DOUBLE) {
         val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.style = Paint.Style.STROKE
-            color = AndroidColor.BLACK
+            this.color = AndroidColor.BLACK
             alpha = 110
             strokeWidth = maxOf(1f, minOf(src.width, src.height) * 0.0015f)
         }
