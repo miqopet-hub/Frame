@@ -331,13 +331,6 @@ private fun FrameApp() {
                     SideSlider("Left", leftPct) { leftPct = it }
                     SideSlider("Right", rightPct) { rightPct = it }
                 }
-                if (style == BorderStyle.WEIGHTED) {
-                    Text("Weighted style uses a deeper lower margin. Adjust Bottom independently.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                }
-                if (style == BorderStyle.SQUARE) {
-                    Text("Square canvas adds space to make a square output. The photo itself remains uncropped.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                }
-
                 SectionTitle("BORDER COLOR")
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(
