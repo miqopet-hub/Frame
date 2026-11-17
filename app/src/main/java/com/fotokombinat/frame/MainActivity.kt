@@ -49,9 +49,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-private enum class BorderStyle(val title: String) {
-    EVEN("Even"), WEIGHTED("Weighted bottom"), ASYMMETRIC("Asymmetric"),
-    SQUARE("Square canvas"), DOUBLE("Double line")
+private enum class BorderStyle(val title: String, val ratio: Float? = null) {
+    EVEN("Even"),
+    SQUARE("Square", 1f),
+    PORTRAIT_4_5("4:5", 4f / 5f),
+    LANDSCAPE_5_4("5:4", 5f / 4f),
+    PORTRAIT_3_4("3:4", 3f / 4f),
+    LANDSCAPE_4_3("4:3", 4f / 3f),
+    STORY_9_16("9:16", 9f / 16f),
+    WIDE_16_9("16:9", 16f / 9f),
+    ASYMMETRIC("Asymmetric"),
+    DOUBLE("Double")
 }
 
 class MainActivity : ComponentActivity() {
@@ -151,7 +159,7 @@ private fun FrameApp() {
 
                 Box(
                     Modifier.fillMaxWidth().height(320.dp)
-                        .clip(RoundedCornerShape(18.dp)).background(Color(0xFFE9E7E1)),
+                        .clip(RoundedCornerShape(18.dp)).background(Color(0xFFD9D7D1)),
                     contentAlignment = Alignment.Center
                 ) {
                     val image = bitmap
@@ -173,29 +181,18 @@ private fun FrameApp() {
                                 .pointerInput(image, sampling, previewSize, topPct, bottomPct, leftPct, rightPct, style) {
                                     detectTapGestures { p ->
                                         if (sampling && previewSize.width > 0) {
-                                            var pt = topPct
-                                            var pb = bottomPct
-                                            var pl = leftPct
-                                            var pr = rightPct
-                                            if (style == BorderStyle.WEIGHTED) pb = maxOf(pb, 18f)
-                                            var totalW = image.width * (1f + (pl + pr) / 100f)
-                                            var totalH = image.height * (1f + (pt + pb) / 100f)
-                                            if (style == BorderStyle.SQUARE) {
-                                                val side = maxOf(totalW, totalH)
-                                                val dx = side - totalW
-                                                val dy = side - totalH
-                                                pl += dx / image.width * 50f
-                                                pr += dx / image.width * 50f
-                                                pt += dy / image.height * 50f
-                                                pb += dy / image.height * 50f
-                                                totalW = side
-                                                totalH = side
-                                            }
+                                            val margins = frameMargins(image.width, image.height, style, widthPct, topPct, bottomPct, leftPct, rightPct)
+                                            val ml = margins[2]
+                                            val mr = margins[3]
+                                            val mt = margins[0]
+                                            val mb = margins[1]
+                                            val totalW = image.width + ml + mr
+                                            val totalH = image.height + mt + mb
                                             val fit = minOf(previewSize.width / totalW, previewSize.height / totalH)
                                             val outW = totalW * fit
                                             val outH = totalH * fit
-                                            val ox = (previewSize.width - outW) / 2f + image.width * pl / 100f * fit
-                                            val oy = (previewSize.height - outH) / 2f + image.height * pt / 100f * fit
+                                            val ox = (previewSize.width - outW) / 2f + ml * fit
+                                            val oy = (previewSize.height - outH) / 2f + mt * fit
                                             val photoW = image.width * fit
                                             val photoH = image.height * fit
                                             if (p.x >= ox && p.x <= ox + photoW && p.y >= oy && p.y <= oy + photoH) {
@@ -208,33 +205,29 @@ private fun FrameApp() {
                                     }
                                 }
                         ) {
-                            var pt = topPct
-                            var pb = bottomPct
-                            var pl = leftPct
-                            var pr = rightPct
-                            if (style == BorderStyle.WEIGHTED) pb = maxOf(pb, 18f)
-                            var totalW = image.width * (1f + (pl + pr) / 100f)
-                            var totalH = image.height * (1f + (pt + pb) / 100f)
-                            if (style == BorderStyle.SQUARE) {
-                                val side = maxOf(totalW, totalH)
-                                val dx = side - totalW
-                                val dy = side - totalH
-                                pl += dx / image.width * 50f
-                                pr += dx / image.width * 50f
-                                pt += dy / image.height * 50f
-                                pb += dy / image.height * 50f
-                                totalW = side
-                                totalH = side
-                            }
+                            val margins = frameMargins(image.width, image.height, style, widthPct, topPct, bottomPct, leftPct, rightPct)
+                            val ml = margins[2]
+                            val mr = margins[3]
+                            val mt = margins[0]
+                            val mb = margins[1]
+                            val totalW = image.width + ml + mr
+                            val totalH = image.height + mt + mb
                             val fit = minOf(size.width / totalW, size.height / totalH)
                             val outW = totalW * fit
                             val outH = totalH * fit
                             val x = (size.width - outW) / 2f
                             val y = (size.height - outH) / 2f
-                            val photoX = x + image.width * pl / 100f * fit
-                            val photoY = y + image.height * pt / 100f * fit
+                            val photoX = x + ml * fit
+                            val photoY = y + mt * fit
                             val photoW = image.width * fit
                             val photoH = image.height * fit
+                            val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                color = AndroidColor.WHITE
+                                setShadowLayer(12f, 0f, 4f, AndroidColor.argb(75, 0, 0, 0))
+                            }
+                            drawContext.canvas.nativeCanvas.drawRoundRect(
+                                RectF(x, y, x + outW, y + outH), 3.dp.toPx(), 3.dp.toPx(), shadowPaint
+                            )
                             drawRect(Color(selected), Offset(x, y), androidx.compose.ui.geometry.Size(outW, outH))
                             // Draw the Android bitmap directly through the native canvas.
                             // This avoids ImageBitmap conversion/rendering issues on some devices.
@@ -283,7 +276,7 @@ private fun FrameApp() {
                                         decodeBitmap(context, source, 16_000_000L)
                                     } ?: throw IllegalStateException("Image could not be decoded")
                                     out = withContext(Dispatchers.Default) {
-                                        render(exportSource!!, selected, style, topPct, bottomPct, leftPct, rightPct)
+                                        render(exportSource!!, selected, style, topPct, bottomPct, leftPct, rightPct, widthPct)
                                     }
                                     val saved = withContext(Dispatchers.IO) { saveBitmap(context, out!!) }
                                     message = if (saved) "Saved to Pictures/FRAME" else "Could not save image."
@@ -306,7 +299,7 @@ private fun FrameApp() {
                 }
                 if (message.isNotBlank()) Text(message, color = Color(0xFF39734A), style = MaterialTheme.typography.bodySmall)
 
-                SectionTitle("BORDER STYLE")
+                SectionTitle("FRAME TYPE")
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BorderStyle.entries.forEach { s ->
                         FilterChip(selected = style == s, onClick = { style = s }, label = { Text(s.title) })
@@ -317,7 +310,7 @@ private fun FrameApp() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("${widthPct.toInt()}%", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { linked = !linked }) { Text(if (linked) "Linked sides" else "Independent sides") }
+                    Text("Minimum frame width", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
                 }
                 Slider(
                     value = widthPct,
@@ -332,7 +325,7 @@ private fun FrameApp() {
                     },
                     valueRange = 0f..40f
                 )
-                if (!linked || style == BorderStyle.ASYMMETRIC || style == BorderStyle.WEIGHTED) {
+                if (style == BorderStyle.ASYMMETRIC) {
                     SideSlider("Top", topPct) { topPct = it }
                     SideSlider("Bottom", bottomPct) { bottomPct = it }
                     SideSlider("Left", leftPct) { leftPct = it }
@@ -425,6 +418,39 @@ private fun decodeBitmap(
     return resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
 }
 
+
+private fun frameMargins(
+    imageW: Int, imageH: Int, style: BorderStyle, widthPct: Float,
+    topPct: Float, bottomPct: Float, leftPct: Float, rightPct: Float
+): FloatArray {
+    val minDimension = minOf(imageW, imageH).toFloat()
+    val base = minDimension * widthPct / 100f
+    if (style == BorderStyle.ASYMMETRIC) {
+        return floatArrayOf(
+            imageH * topPct / 100f, imageH * bottomPct / 100f,
+            imageW * leftPct / 100f, imageW * rightPct / 100f
+        )
+    }
+    if (style == BorderStyle.EVEN || style == BorderStyle.DOUBLE) {
+        return floatArrayOf(base, base, base, base)
+    }
+    val targetRatio = style.ratio ?: 1f
+    val minW = imageW + base * 2f
+    val minH = imageH + base * 2f
+    val canvasW: Float
+    val canvasH: Float
+    if (minW / minH > targetRatio) {
+        canvasW = minW
+        canvasH = minW / targetRatio
+    } else {
+        canvasH = minH
+        canvasW = minH * targetRatio
+    }
+    val horizontal = maxOf(base, (canvasW - imageW) / 2f)
+    val vertical = maxOf(base, (canvasH - imageH) / 2f)
+    return floatArrayOf(vertical, vertical, horizontal, horizontal)
+}
+
 private fun parseHex(s: String): Int? = try {
     AndroidColor.parseColor(if (s.startsWith("#")) s else "#$s")
 } catch (_: Exception) { null }
@@ -464,26 +490,15 @@ private fun colorDistance(a: Int, b: Int): Double {
 
 private fun render(
     src: Bitmap, color: Int, style: BorderStyle,
-    top: Float, bottom: Float, left: Float, right: Float
+    top: Float, bottom: Float, left: Float, right: Float, borderWidthPct: Float = 10f
 ): Bitmap {
-    var t = (src.height * top / 100f).toInt()
-    var b = (src.height * bottom / 100f).toInt()
-    var l = (src.width * left / 100f).toInt()
-    var r = (src.width * right / 100f).toInt()
-    if (style == BorderStyle.WEIGHTED) b = maxOf(b, (src.height * 0.18f).toInt())
+    val margins = frameMargins(src.width, src.height, style, borderWidthPct, top, bottom, left, right)
+    var t = margins[0].toInt()
+    var b = margins[1].toInt()
+    var l = margins[2].toInt()
+    var r = margins[3].toInt()
     var outW = src.width + l + r
     var outH = src.height + t + b
-    if (style == BorderStyle.SQUARE) {
-        val side = maxOf(outW, outH)
-        val dx = side - outW
-        val dy = side - outH
-        l += dx / 2
-        r += dx - dx / 2
-        t += dy / 2
-        b += dy - dy / 2
-        outW = side
-        outH = side
-    }
     val out = Bitmap.createBitmap(outW.coerceAtLeast(1), outH.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
     val canvas = Canvas(out)
     canvas.drawColor(color)
