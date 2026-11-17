@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -235,10 +236,13 @@ private fun FrameApp() {
                             val photoW = image.width * fit
                             val photoH = image.height * fit
                             drawRect(Color(selected), Offset(x, y), androidx.compose.ui.geometry.Size(outW, outH))
-                            drawImage(
-                                image.asImageBitmap(),
-                                dstOffset = androidx.compose.ui.unit.IntOffset(photoX.toInt(), photoY.toInt()),
-                                dstSize = androidx.compose.ui.unit.IntSize(photoW.toInt().coerceAtLeast(1), photoH.toInt().coerceAtLeast(1))
+                            // Draw the Android bitmap directly through the native canvas.
+                            // This avoids ImageBitmap conversion/rendering issues on some devices.
+                            drawContext.canvas.nativeCanvas.drawBitmap(
+                                image,
+                                null,
+                                RectF(photoX, photoY, photoX + photoW, photoY + photoH),
+                                Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
                             )
                             if (style == BorderStyle.DOUBLE) {
                                 drawRect(
